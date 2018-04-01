@@ -1,9 +1,9 @@
 from serpent.game_agent import GameAgent
-from serpent.game_api import GameAPI
-import time
+#from serpent.game_api import GameAPI
+#import time
 
 #######################
-import serpent.cv
+#import serpent.cv
 import random
 from serpent.input_controller import KeyboardKey
 import collections
@@ -15,20 +15,20 @@ import numpy as np
 from .helpers.helper import expand_bounding_box
 from .helpers.terminal_printer import TerminalPrinter
 from serpent.game_frame import GameFrame
-from serpent.frame_grabber import FrameGrabber
-from serpent.config import config
+#from serpent.frame_grabber import FrameGrabber
+#from serpent.config import config
 #######################
 ###########################################################################
 from serpent.game_agent import GameAgent
 
 from serpent.game_frame import GameFrame
-from serpent.frame_grabber import FrameGrabber
+#from serpent.frame_grabber import FrameGrabber
 
 from serpent.input_controller import KeyboardKey
 
-from serpent.config import config
+#from serpent.config import config
 
-from datetime import datetime
+#from datetime import datetime
 
 import skimage.io
 import skimage.transform
@@ -38,20 +38,20 @@ import skimage.util
 import numpy as np
 
 import random
-import time
+#import time
 import collections
-import subprocess
-import shlex
-import os
+#import subprocess
+#import shlex
+#import os
 
 #import serpent.ocr
-import serpent.cv
+#import serpent.cv
 #import serpent.utilities
 
 from .helpers.helper import expand_bounding_box
 from .helpers.terminal_printer import TerminalPrinter
 
-from .helpers.ppo import SerpentPPO
+#from .helpers.ppo import SerpentPPO
 ###########################################################################
 class SerpenttrexGameAgent(GameAgent):
 
