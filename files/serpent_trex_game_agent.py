@@ -28,7 +28,7 @@ from serpent.input_controller import KeyboardKey
 
 #from serpent.config import config
 
-#from datetime import datetime
+from datetime import datetime
 
 import skimage.io
 import skimage.transform
@@ -42,49 +42,98 @@ import random
 import collections
 #import subprocess
 #import shlex
-#import os
+import os
 
-#import serpent.ocr
-#import serpent.cv
-#import serpent.utilities
+import serpent.ocr
+import serpent.cv
+import serpent.utilities
 
 from .helpers.helper import expand_bounding_box
 from .helpers.terminal_printer import TerminalPrinter
 
 #from .helpers.ppo import SerpentPPO
 ###########################################################################
+from serpent.machine_learning.reinforcement_learning.keyboard_mouse_action_space import KeyboardMouseActionSpace
+import gc
+from serpent.machine_learning.reinforcement_learning.ddqn import DDQN
+from colorama import init, Fore, Back, Style
+import serpent.cv
+import time
+###########################################################################
+
 class SerpenttrexGameAgent(GameAgent):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
         self.frame_handlers["PLAY"] = self.handle_play
-        self.frame_handlers["RANDOM"] = self.handle_random
 
         self.frame_handler_setups["PLAY"] = self.setup_play
-        self.frame_handler_setups["RANDOM"] = self.setup_random
 
-        self.game_inputs = {
-            "JUMP": [KeyboardKey.KEY_SPACE],
-            "DUCK": [KeyboardKey.KEY_DOWN],
-            "NOOP": []
-        }
+        self.analytics_client = None
+
+        self.game_state = None
+        self._reset_game_state()
+
+        init()
 
     def setup_play(self):
-        print(f"### setup_play")
+        #print(f"### setup_play")
         self.performed_inputs = collections.deque(list(), maxlen=8)
-        #pass
+        self.game_inputs = {
+            "JUMP": [KeyboardKey.KEY_SPACE],
+            "DUCK": [KeyboardKey.KEY_DOWN]
+            # "NOOP": []
+        }
+
+        self.key_mapping = {
+            KeyboardKey.KEY_SPACE: "JUMP",
+            KeyboardKey.KEY_DOWN: "DUCK"
+        }
+
+        # Game Specific Inputs
+        direction_action_space = KeyboardMouseActionSpace(
+            direction_keys=[None, "JUMP", "DUCK"])
+
+        direction_model_file_path = "datasets/trex_direction_dqn_0_1.hf".replace("/", os.sep)
+
+        self.dqn_direction = DDQN(
+            model_file_path=direction_model_file_path if os.path.isfile(direction_model_file_path) else None,
+            input_shape=(400, 400, 4),
+            input_mapping=self.game_inputs,
+            action_space=direction_action_space,
+            replay_memory_size=40000,
+            max_steps=3000000,
+            observe_steps=5000,
+            batch_size=32,
+            model_learning_rate=1e-4,
+            initial_epsilon=1.0,
+            final_epsilon=0.1,
+            override_epsilon=False
+        )
+
+
 
     def setup_random(self):
-        print(f"### setup_random")
+        #print(f"### setup_random")
         self.performed_inputs = collections.deque(list(), maxlen=8)
         #pass
 
     def handle_play(self, game_frame):
-        print(f"### handle_play")
+        #print(f"### handle_play")
+        gc.disable()
+
+        if self.dqn_direction.first_run:
+            print(f"### First run, tap space to get us going...")
+            self.input_controller.tap_key(KeyboardKey.KEY_SPACE)
+
+            self.dqn_direction.first_run = False
+
+            return None
+
+        # need to try to pull score
+        curr_score = self._get_score(game_frame)
         
-        #my_image = self.game.api.capture_game_over()
-        #game_frame = FrameGrabber.get_frames([0]).frames[0]
         my_image = self.game.api._capture_game_over_image()
         
         # start visual debugger in another window:
@@ -103,38 +152,28 @@ class SerpenttrexGameAgent(GameAgent):
 
         self.is_alive([None, None, game_frame, None])
 
-        #pass
     def handle_random(self, game_frame):
-        print(f"## handle_random...")
+        #print(f"## handle_random...")
         game_input_key = random.choice(list(self.game_inputs.keys()))
 
         self.performed_inputs.appendleft(game_input_key)
 
         self.input_controller.handle_keys(self.game_inputs[game_input_key])
-        #self.input_controller.handle_keys([])
-
-        #pass
 
     def is_alive(self,frames,**kwargs):
-        print(f"### is_alive")
+        #print(f"### is_alive")
         bw_frame = self.get_clean_frame(frames)
         if not self.game.api.is_alive(GameFrame(frames[-2].frame), self.sprite_identifier):
-            print("#### is_alive is NOT true.... ")
-            print("Restarting.....")
+            print(f"### Died...")
             self.input_controller.tap_key(KeyboardKey.KEY_SPACE)
             return 0
 
         else:
-            print("OMG")
-            # print("Restarting.....")
-            # self.input_controller.tap_key(KeyboardKey.KEY_UP)
-
-        # print("Sleeping for 2.....")
-        # time.sleep(2)
-        #pass
+            # print(f"### Still Alive...")
+            pass
 
     def get_clean_frame(self,frames):
-        print(f"### get_clean_frame")
+        #print(f"### get_clean_frame")
         bw_frame = skimage.util.img_as_ubyte(np.all(frames[-2].frame > 240, axis=-1))
 
         label_frame = skimage.measure.label(bw_frame)
@@ -167,3 +206,39 @@ class SerpenttrexGameAgent(GameAgent):
                         break
 
         return clean_frame
+
+
+    def _reset_game_state(self):
+        self.game_state = {
+            "health": collections.deque(np.full((8,), 3), maxlen=8),
+            "score": collections.deque(np.full((8,), 0), maxlen=8),
+            "run_reward_direction": 0,
+            "run_reward_action": 0,
+            "current_run": 1,
+            "current_run_steps": 0,
+            "current_run_health": 3,
+            "current_run_score": 0,
+            "run_predicted_actions": 0,
+            "last_run_duration": 0,
+            "record_time_alive": dict(),
+            "random_time_alive": None,
+            "random_time_alives": list(),
+            "run_timestamp": datetime.utcnow(),
+        }
+
+    def _get_score(self, game_frame):
+        print(f"### _get_score()")
+        score_area_frame = serpent.cv.extract_region_from_image(game_frame.frame, self.game.screen_regions["SCORE_AREA"])
+        print("score_area_frame")
+        print(type(score_area_frame))
+        time.sleep(2)
+
+        ####score_grayscale = np.array(skimage.color.rgb2gray(score_area_frame) * 255, dtype="uint8")
+
+        #tjb score = serpent.ocr.perform_ocr(image=score_grayscale, scale=10, order=1, horizontal_closing=1, vertical_closing=1)
+        ####score = serpent.ocr.perform_ocr(image=score_grayscale, scale=10, order=1, horizontal_closing=1, vertical_closing=1)
+        #print(f"### Score: {score}")
+
+
+
+        pass
